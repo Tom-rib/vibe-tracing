@@ -1,0 +1,15 @@
+⚡ QUICK START
+===============
+
+1. Extract ZIP to folder
+2. Open terminal in folder
+3. Run:
+   pip install -r requirements.txt
+   python backend/app.py
+
+4. Open browser:
+   http://localhost:5000/chat
+
+5. Type description and generate!
+
+Done! 🎨
