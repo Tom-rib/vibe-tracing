@@ -1,15 +1,23 @@
-⚡ QUICK START
-===============
+⚡ QUICK START (2 minutes)
+===========================
 
-1. Extract ZIP to folder
-2. Open terminal in folder
-3. Run:
+1. Install:
    pip install -r requirements.txt
-   python backend/app.py
 
-4. Open browser:
+2. Run:
+   python run.py
+
+3. Open:
    http://localhost:5000/chat
 
-5. Type description and generate!
+4. Type:
+   "Un cube bleu"
 
-Done! 🎨
+5. Click:
+   "Générer"
+
+6. Done! 🎨
+
+For raytracer high-quality rendering:
+   cd ../raytracer_c
+   make clean && make

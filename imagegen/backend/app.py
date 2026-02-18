@@ -362,9 +362,17 @@ async def health():
 async def generate_image(request: dict):
     """Generate image from description"""
     try:
-        from backend.nlp_engine import NLPEngine
-        from backend.scene_generator import SceneGenerator
-        from backend.raytracer_integration import raytracer
+        import sys
+        import os
+        
+        # Add backend to path
+        backend_path = os.path.dirname(__file__)
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+        
+        from nlp_engine import NLPEngine
+        from scene_generator import SceneGenerator
+        from raytracer_integration import raytracer
         
         description = request.get('description', '')
         if not description:
@@ -404,7 +412,14 @@ async def generate_image(request: dict):
 @app.get("/api/raytracer/status")
 async def raytracer_status():
     """Check raytracer status"""
-    from backend.raytracer_integration import get_raytracer_status
+    import sys
+    import os
+    
+    backend_path = os.path.dirname(__file__)
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+    
+    from raytracer_integration import get_raytracer_status
     return get_raytracer_status()
 
 

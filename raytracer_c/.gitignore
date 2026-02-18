@@ -1,0 +1,50 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+
+# Executables
+raytracer
+*.exe
+
+# Output images
+*.ppm
+*.png
+*.jpg
+*.jpeg
+*.bmp
+
+# Profiling
+gmon.out
+perf.data
+perf.data.old
+profile.txt
+profile*.txt
+
+# Debug files
+*.dSYM/
+.gdb_history
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Build system
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
