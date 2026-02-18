@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
+import os
 
 
 app = FastAPI(
@@ -133,8 +134,27 @@ async def chat_page():
             border: 1px solid #e0e0e0;
             border-bottom-left-radius: 2px;
         }
-        .message-image { max-width: 100%; border-radius: 10px; margin-top: 10px; }
-        .message-info { font-size: 0.8em; opacity: 0.7; margin-top: 5px; }
+        .message-image {
+            max-width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .message-image:hover { transform: scale(1.02); }
+        .message-info {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .message-info a {
+            color: #667eea;
+            text-decoration: none;
+            margin-left: 10px;
+        }
+        .message-info a:hover {
+            text-decoration: underline;
+        }
         .loading { display: flex; gap: 5px; align-items: center; }
         .loading-dot {
             width: 8px;
@@ -204,6 +224,56 @@ async def chat_page():
             border-color: #667eea;
             color: #667eea;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            position: relative;
+            text-align: center;
+        }
+        .modal-content img {
+            max-width: 100%;
+            max-height: 80vh;
+            border-radius: 10px;
+        }
+        .modal-buttons {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .modal-buttons a, .modal-buttons button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #666;
+        }
+        .close-modal:hover { color: #000; }
     </style>
 </head>
 <body>
@@ -242,9 +312,22 @@ async def chat_page():
         </div>
     </div>
 
+    <div class="modal" id="imageModal" onclick="if(event.target === this) closeModal()">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <img id="modalImage" src="" alt="Generated image">
+            <div class="modal-buttons">
+                <a id="downloadBtn" href="" download style="background: #667eea; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none;">📥 Télécharger</a>
+            </div>
+        </div>
+    </div>
+
     <script>
         const chatContainer = document.getElementById('chatContainer');
         const input = document.getElementById('input');
+        const imageModal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        const downloadBtn = document.getElementById('downloadBtn');
 
         async function sendMessage() {
             const text = input.value.trim();
@@ -269,10 +352,20 @@ async def chat_page():
                 if (result.success) {
                     let content = `✨ Scene generated!<br>`;
                     content += `<strong>Objects:</strong> ${result.objects_count}<br>`;
+                    
                     if (result.image_url) {
-                        content += `<img src="${result.image_url}" class="message-image" style="max-width: 100%; border-radius: 10px;">`;
-                        content += `<div class="message-info">📊 ${result.render_time}ms</div>`;
+                        content += `<img 
+                            src="${result.image_url}" 
+                            class="message-image" 
+                            onclick="openModal('${result.image_url}', '${result.filename}')"
+                            title="Click to enlarge"
+                        >`;
+                        content += `<div class="message-info">
+                            📊 ${result.render_time}ms
+                            <a href="${result.image_url}" download="${result.filename}">⬇️ Download</a>
+                        </div>`;
                     }
+
                     addMessage('bot', content, true);
                 } else {
                     addMessage('bot', `❌ Error: ${result.error}`);
@@ -333,11 +426,43 @@ async def chat_page():
             if (el) el.remove();
         }
 
+        function openModal(src, filename) {
+            modalImage.src = src;
+            downloadBtn.href = src;
+            downloadBtn.download = filename;
+            imageModal.classList.add('show');
+        }
+
+        function closeModal() {
+            imageModal.classList.remove('show');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
         input.focus();
     </script>
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+# ============================================================================
+# Routes - Images
+# ============================================================================
+
+@app.get("/api/images/{filename}")
+async def get_image(filename: str):
+    """Serve generated images"""
+    from backend.raytracer_integration import raytracer
+    
+    filepath = os.path.join(raytracer.output_dir, filename)
+    
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return FileResponse(filepath, media_type="image/x-portable-pixmap")
 
 
 # ============================================================================
@@ -398,6 +523,7 @@ async def generate_image(request: dict):
                 "description": description,
                 "objects_count": len(entities),
                 "image_url": result['image_url'],
+                "filename": result.get('filename', 'image.ppm'),
                 "render_time": result['render_time'],
                 "format": result['image_format'],
                 "timestamp": result['timestamp']
@@ -414,7 +540,6 @@ async def raytracer_status():
     """Check raytracer status"""
     import sys
     import os
-    
     backend_path = os.path.dirname(__file__)
     if backend_path not in sys.path:
         sys.path.insert(0, backend_path)

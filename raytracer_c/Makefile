@@ -1,3 +1,4 @@
+
 CC := gcc
 CFLAGS := -O3 -march=native -std=c99 -Wall -Wextra -ffast-math
 DEBUGFLAGS := -g -O0 -Wall -Wextra
@@ -8,7 +9,7 @@ BUILDDIR := build
 OBJDIR := $(BUILDDIR)/obj
 BINDIR := $(BUILDDIR)/bin
 
-# Find all .c files (except main.c for now, handled separately)
+# Find all .c files (except main.c)
 SOURCES := $(filter-out $(SRCDIR)/main.c, $(shell find $(SRCDIR) -name "*.c"))
 OBJECTS := $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 MAIN_OBJ := $(OBJDIR)/main.o
@@ -39,8 +40,17 @@ debug: clean all
 clean:
 	@echo "Cleaning..."
 	@rm -rf $(BUILDDIR)
-	@rm -f *.ppm gmon.out profile.txt
+	@rm -f *.ppm gmon.out profile.txt test_phase1
 	@echo "✓ Clean complete"
+
+# Test build and run
+test: clean
+	@echo "Building tests..."
+	$(CC) $(CFLAGS) test_phase1.c \
+		$(SOURCES) \
+		$(LDFLAGS) -o test_phase1
+	@echo "Running tests..."
+	@./test_phase1
 
 # Profile build
 profile: CFLAGS += -pg
@@ -62,16 +72,22 @@ run: all
 	@time ./$(TARGET) output.ppm
 	@echo "✓ Image saved to output.ppm"
 
+# Validate build
+validate: test run
+	@echo "✓ All validation passed!"
+
 # Help
 help:
 	@echo "Raytracer Build System"
 	@echo ""
 	@echo "Targets:"
 	@echo "  make all          - Build optimized raytracer"
+	@echo "  make test         - Build and run unit tests"
 	@echo "  make debug        - Build with debug symbols"
 	@echo "  make clean        - Remove build artifacts"
 	@echo "  make run          - Build and run raytracer"
-	@echo "  make profile      - Build with profiling enabled"
+	@echo "  make validate     - Run tests and raytracer"
+	@echo "  make profile      - Build with profiling"
 	@echo "  make profile-run  - Profile the raytracer"
 	@echo "  make help         - Show this message"
 	@echo ""
@@ -79,4 +95,4 @@ help:
 	@echo "Flags: $(CFLAGS)"
 	@echo "Target: $(TARGET)"
 
-.PHONY: all debug clean run profile profile-run help
+.PHONY: all debug clean test run profile profile-run validate help

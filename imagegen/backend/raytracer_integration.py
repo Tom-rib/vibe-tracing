@@ -6,6 +6,7 @@ import subprocess
 import os
 import base64
 import json
+import shutil
 from pathlib import Path
 from datetime import datetime
 import tempfile
@@ -16,138 +17,125 @@ class RaytracerIntegration:
     """Interface avec le raytracer C"""
     
     def __init__(self, raytracer_path: str = None):
-        """
-        Initialize raytracer integration.
-        
-        Args:
-            raytracer_path: Path to raytracer binary
-        """
-        # Try to find raytracer in common locations
+        """Initialize raytracer integration."""
         if raytracer_path is None:
             possible_paths = [
-                '../raytracer_c/build/bin/raytracer',
                 '/mnt/c/Users/Tom/Documents/Github/BTP B2/minivibes/vibe-tracing/raytracer_c/build/bin/raytracer',
+                '../raytracer_c/build/bin/raytracer',
                 './raytracer_c/build/bin/raytracer',
-                '/home/raytracer',
+                '../../raytracer_c/build/bin/raytracer',
+                os.path.expanduser('~/projects/raytracer_c/build/bin/raytracer'),
             ]
             
             for path in possible_paths:
-                if os.path.exists(path):
-                    raytracer_path = path
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path):
+                    raytracer_path = abs_path
+                    print(f"✅ Raytracer found at: {raytracer_path}")
                     break
         
         self.raytracer_path = raytracer_path
         self.available = raytracer_path is not None and os.path.exists(raytracer_path)
+        
+        # Create output directory if it doesn't exist
+        self.output_dir = os.path.join(os.path.dirname(__file__), '..', 'output_images')
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        if not self.available:
+            print(f"⚠️ Raytracer not found")
     
     def _generate_fallback(self, description: str, width: int = 800, height: int = 600) -> dict:
-        """Generate a simple fallback image when raytracer is not available"""
+        """Generate fallback gradient image"""
         
-        # Generate a simple gradient PPM (cyan to purple gradient)
-        ppm_lines = [
-            f"P6",
-            f"{width} {height}",
-            "255"
-        ]
-        
-        # Create gradient
+        ppm_lines = ["P6", f"{width} {height}", "255"]
         pixels = []
+        
         for y in range(height):
             for x in range(width):
-                # Cyan to purple gradient
                 ratio = y / height
                 r = int(0 + (200 * ratio))
                 g = int(200 * (1 - ratio * 0.5))
                 b = int(255 - (100 * ratio))
                 pixels.extend([r, g, b])
         
-        # Create PPM data
         ppm_data = "\n".join(ppm_lines).encode() + b"\n" + bytes(pixels)
         
-        # Convert to base64
-        ppm_base64 = base64.b64encode(ppm_data).decode('utf-8')
-        image_data_uri = f"data:image/x-portable-pixmap;base64,{ppm_base64}"
+        # Save to output directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"fallback_{timestamp}.ppm"
+        filepath = os.path.join(self.output_dir, filename)
+        
+        with open(filepath, 'wb') as f:
+            f.write(ppm_data)
         
         return {
             'success': True,
-            'image_url': image_data_uri,
+            'image_url': f'/api/images/{filename}',
+            'filename': filename,
             'image_format': 'ppm',
             'render_time': 10,
             'width': width,
             'height': height,
             'description': description,
             'timestamp': datetime.now().isoformat(),
-            'note': '⚠️ Raytracer not compiled - showing preview'
+            'note': '⚠️ Fallback preview'
         }
     
     def generate(self, description: str, width: int = 800, height: int = 600) -> dict:
-        """
-        Generate image using raytracer.
-        
-        Args:
-            description: Scene description
-            width: Image width
-            height: Image height
-            
-        Returns:
-            Dict with image data and metadata
-        """
+        """Generate image using raytracer."""
         
         if not self.available:
-            # Fallback: generate a simple gradient image
+            print("⚠️ Raytracer not available, using fallback")
             return self._generate_fallback(description, width, height)
         
         try:
-            # Create temp file for output
-            with tempfile.NamedTemporaryFile(suffix='.ppm', delete=False) as f:
-                output_path = f.name
+            raytracer_dir = os.path.dirname(self.raytracer_path)
+            output_ppm = os.path.join(raytracer_dir, 'output.ppm')
             
-            # Run raytracer
             print(f"🎨 Running raytracer: {self.raytracer_path}")
             print(f"📊 Output: {width}x{height}")
             
             start_time = time.time()
             
             result = subprocess.run(
-                [self.raytracer_path, output_path, str(width), str(height)],
+                [self.raytracer_path, 'output.ppm', str(width), str(height)],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                cwd=raytracer_dir
             )
             
             render_time = time.time() - start_time
             
             if result.returncode != 0:
+                print(f"❌ Raytracer error: {result.stderr}")
                 return {
                     'success': False,
-                    'error': result.stderr or 'Raytracer failed',
-                    'stdout': result.stdout
+                    'error': result.stderr or 'Raytracer failed'
                 }
             
-            # Read PPM file
-            if not os.path.exists(output_path):
+            # Check if file was created
+            if not os.path.exists(output_ppm):
+                print(f"❌ PPM file not found at {output_ppm}")
                 return {
                     'success': False,
                     'error': 'PPM file not generated'
                 }
             
-            # Convert PPM to base64 data URI
-            with open(output_path, 'rb') as f:
-                ppm_data = f.read()
+            # Copy to output directory with unique name
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"render_{timestamp}.ppm"
+            dest_path = os.path.join(self.output_dir, filename)
             
-            ppm_base64 = base64.b64encode(ppm_data).decode('utf-8')
-            image_data_uri = f"data:image/x-portable-pixmap;base64,{ppm_base64}"
-            
-            # Cleanup
-            try:
-                os.unlink(output_path)
-            except:
-                pass
+            shutil.copy2(output_ppm, dest_path)
+            print(f"✅ Image saved to: {dest_path}")
             
             return {
                 'success': True,
-                'image_url': image_data_uri,
+                'image_url': f'/api/images/{filename}',
+                'filename': filename,
                 'image_format': 'ppm',
-                'render_time': int(render_time * 1000),  # milliseconds
+                'render_time': int(render_time * 1000),
                 'width': width,
                 'height': height,
                 'description': description,
@@ -155,18 +143,13 @@ class RaytracerIntegration:
             }
         
         except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'error': 'Raytracer timeout (30 seconds)'
-            }
+            print("❌ Raytracer timeout")
+            return {'success': False, 'error': 'Raytracer timeout'}
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            print(f"❌ Error: {str(e)}")
+            return {'success': False, 'error': str(e)}
 
 
-# Global raytracer instance
 raytracer = RaytracerIntegration()
 
 
@@ -175,6 +158,6 @@ def get_raytracer_status() -> dict:
     return {
         'available': raytracer.available,
         'path': raytracer.raytracer_path if raytracer.available else None,
-        'message': '✅ Raytracer ready' if raytracer.available else '⚠️ Using fallback (raytracer not compiled)',
-        'fallback': not raytracer.available
+        'message': '✅ Raytracer ready' if raytracer.available else '⚠️ Using fallback',
+        'output_dir': raytracer.output_dir
     }
